@@ -1,6 +1,6 @@
 import assert from "node:assert"
 import http from "node:http"
-import { after, before, describe, it } from "node:test"
+import { after, before, describe, test } from "node:test"
 
 import { Router } from "./router.mjs"
 
@@ -41,6 +41,10 @@ describe("Router", () => {
                 res.end()
             })
 
+            router.POST("/books", (req, res) => {
+                res.end()
+            });
+            
             router.GET("/books/:id", (req, res) => {
                 res.setHeader("content-type", "text/plain")
                 res.end(req.params.id)
@@ -60,35 +64,41 @@ describe("Router", () => {
         server.close()
     })
 
-    it("responds 404", async () => {
+    test("GET /404 responds 404", async () => {
         const res = await request("http://127.0.0.1:42069/404")
-        console.log(res.statusCode)
         assert.strictEqual(res.statusCode, 404)
     })
 
-    it("responds 405", async () => {
+    test("POST /getroute responds 405", async () => {
         const res = await request("http://127.0.0.1:42069/getroute", { method: "POST" })
         assert.strictEqual(res.statusCode, 405)
     })
 
-    it("responds 200", async () => {
-        const res = await request("http://127.0.0.1:42069/getroute")
-        assert.strictEqual(res.statusCode, 200)
+    test("responds 200", async (t) => {
+        await t.test("GET /getroute", async () => {
+            const res = await request("http://127.0.0.1:42069/getroute")
+            assert.strictEqual(res.statusCode, 200)
+        })
+
+        await t.test("POST /books", async () => {
+            const res = await request("http://127.0.0.1:42069/books", { method: "POST" })
+            assert.strictEqual(res.statusCode, 200)
+        })
     })
 
-    it("responds 200 on parameterised route", async (t) => {
-        await t.test("trailing param", async () => {
+    test("parameterised path", async (t) => {
+        await t.test("GET /books/:id responds 200", async () => {
             const res = await request("http://127.0.0.1:42069/books/abc123")
             assert.strictEqual(res.statusCode, 200)
         })
 
-        await t.test("non-trailing param", async () => {
+        await t.test("GET /books/:id/reviews responds 200", async () => {
             const res = await request("http://127.0.0.1:42069/books/abc123/reviews")
             assert.strictEqual(res.statusCode, 200)
         })
     })
 
-    it("sets params", async () => {
+    test("params get set to req object", async () => {
         const id = "abc123"
         const res = await request(`http://127.0.0.1:42069/books/${id}`)
         assert.strictEqual(res.body, id)

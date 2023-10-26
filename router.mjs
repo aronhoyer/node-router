@@ -1,99 +1,75 @@
 /**
+ * @typedef {import('node:http').IncomingMessage & { params: Object.<string, string|number> }} Request
+ * @typedef {import('node:http').ServerResponse<Request>} Response
+ *
+ * @callback Handler
+ * @param {Request}
+ * @param {Response}
+ *
  * @typedef {Object} Param
  * @prop {string} key
  * @prop {number} position
  *
- * @typedef {import("node:http").IncomingMessage & { params: Object.<string, string|number> }} Request
- * @typedef {import("node:http").ServerResponse} Response
- *
- * @callback Handler
- * @param {Request} req
- * @param {Response} res
- *
- * @typedef Route
- * @prop {Handler} handler
- * @prop {Param[]} params
+ * @typedef {Object} Route
  * @prop {string} path
- *
- * @typedef {Object.<string, Object.<string, Route>>} Tree
+ * @prop {Param[]} params
+ * @prop {Object.<string, Handler>} handlers
  */
 
+import { normalisePath } from './util.mjs'
+
 export class Router {
-    /** @type {Tree} */
-    #tree = {}
+    /** @type {Object.<string, Route> */
+    #routes = {}
 
     constructor() {
         this.requestListener = this.requestListener.bind(this)
     }
 
     /**
+     * @param {string} path @param {Handler} handler
      * @param {string} method
-     * @param {string} path
-     * @param {Handler} handler
      */
     #registerRoute(method, path, handler) {
-        if (!this.#tree[path]) {
-            this.#tree[path] = {}
-        }
+        if (path in this.#routes) {
+            if (method in this.#routes[path].handlers) {
+                throw new Error(`${method} handler is already registered for ${path}`)
+            }
 
-        if (this.#tree[path][method]) {
-            throw new Error(`A ${method} is already registered for ${path}`)
-        }
-
-        this.#tree[path][method] = {
-            handler,
-            path,
-            params: this.#getParamKeys(path),
+            this.#routes[path].handlers[method] = handler
+        } else {
+            this.#routes[path] = {
+                handlers: {
+                    [method]: handler,
+                },
+                params: this.#getParamKeys(path),
+                path: normalisePath(path),
+            }
         }
     }
 
     /**
      * @param {string} path
-     * @returns {Param[]}
      */
     #getParamKeys(path) {
-        const parts = path.split("/").filter(Boolean)
-
-        /** @type {Param[]} */
-        const params = []
-
-        for (let i = 0; i < parts.length; i++) {
-            const part = parts[i]
-            if (part.startsWith(":")) {
-                params.push({
-                    key: part.slice(1),
-                    position: i,
-                })
-            }
-            
-        }
-
-        return params
+        return path
+            .split('/')
+            .filter(Boolean)
+            .map((p) => p.startsWith(':') ? p.slice(1) : null)
+            .reduce((params, key, i) => key ? [...params, { key, position: i }] : params, [])
     }
-    
+
     /**
-     * @param {Route} route
+     * @param {Param[]} params
      * @param {string} url
      * @returns {Object.<string, string|number>}
      */
-    #getParams(route, url) {
-        /** @type {Object.<string, string|number>} */
-        const params = {}
-
-        if (!route.params) {
-            return params
-        }
-
-        const urlParts = url.split("/").filter(Boolean)
-
-        for (let i = 0; i < route.params.length; i++) {
-            const param = route.params[i]
-                Object.assign(params, {
-                    [param.key]: urlParts[param.position],
-                })
-        }
-
-        return params
+    #getParamValues(params, url) {
+        const urlParts = url.split('/').filter(Boolean)
+        return params.reduce((ps, p) => ({
+            ...ps,
+            [p.key]: urlParts[p.position],
+        }), {})
     }
 
     /**
@@ -102,67 +78,35 @@ export class Router {
      * @returns {boolean}
      */
     #pathMatches(route, url) {
-        if (!route.path.includes(":")) {
-            return route.path === url
+        if (route.path === url) {
+            return true
         }
 
-        const pathParts = route.path.split("/").filter(Boolean)
-        const urlParts = url.split("/").filter(Boolean)
+        const pathParts = route.path.split('/').filter(Boolean)
+        const urlParts = url.split('/').filter(Boolean)
 
         if (pathParts.length !== urlParts.length) {
             return false
         }
 
-        /** @type {boolean[]} */
-        let matches = []
+        const matchingParts = []
 
         for (let i = 0; i < urlParts.length; i++) {
-            const part = urlParts[i]
-            if (part === pathParts[i]) {
-                matches.push(true)
+            const part = urlParts[i];
+
+            if (pathParts[i].startsWith(':')) {
+                const matchingParam = route.params.find((param) => param.position === i)
+                matchingParts.push(!!matchingParam)
             } else {
-                for (let j = 0; j < route.params.length; j++) {
-                    const param = route.params[j];
-                    matches.push(param.position === i)
-                }
+                matchingParts.push(part === pathParts[i])
             }
         }
 
-        return matches.every((m) => m)
+        return matchingParts.every(Boolean)
     }
 
     /**
-     * @param {Request} req
-     * @returns {Route}
-     */
-    #getRoute(req) {
-        /** @type {Route} */
-        let match = {
-            handler: this.notFoundHandler,
-        }
-
-        for (const path in this.#tree) {
-            if (this.#tree.hasOwnProperty(path)) {
-                const node = this.#tree[path]
-
-                if (req.method in node) {
-                    if (this.#pathMatches(node[req.method], req.url)) {
-                        match = node[req.method]
-                    }
-                } else {
-                    match = {
-                        handler: this.methodNotAllowedHandler,
-                    }
-                }
-            }
-        }
-
-        return match
-    }
-
-    /**
-     * @param {Request} req
-     * @param {Response} res
+     * @type {Handler}
      */
     notFoundHandler(req, res) {
         res.statusCode = 404
@@ -170,8 +114,7 @@ export class Router {
     }
 
     /**
-     * @param {Request} req
-     * @param {Response} res
+     * @type {Handler}
      */
     methodNotAllowedHandler(req, res) {
         res.statusCode = 405
@@ -182,32 +125,16 @@ export class Router {
      * @param {string} path
      * @param {Handler} handler
      */
-    GET(path, handler) {
-        this.#registerRoute("GET", path, handler)
-    }
-
-    /**
-     * @param {string} path
-     * @param {Handler} handler
-     */
-    POST(path, handler) {
-        this.#registerRoute("POST", path, handler)
-    }
-
-    /**
-     * @param {string} path
-     * @param {Handler} handler
-     */
-    PUT(path, handler) {
-        this.#registerRoute("PUT", path, handler)
-    }
-
-    /**
-     * @param {string} path
-     * @param {Handler} handler
-     */
     DELETE(path, handler) {
-        this.#registerRoute("DELETE", path, handler)
+        this.#registerRoute('DELETE', path, handler)
+    }
+
+    /**
+     * @param {string} path
+     * @param {Handler} handler
+     */
+    GET(path, handler) {
+        this.#registerRoute('GET', path, handler)
     }
 
     /**
@@ -215,18 +142,54 @@ export class Router {
      * @param {Handler} handler
      */
     PATCH(path, handler) {
-        this.#registerRoute("PATCH", path, handler)
+        this.#registerRoute('PATCH', path, handler)
     }
 
     /**
-     * @param {import("node:http").IncomingMessage} req
-     * @param {import("node:http").ServerResponse} res
+     * @param {string} path
+     * @param {Handler} handler
+     */
+    POST(path, handler) {
+        this.#registerRoute('POST', path, handler)
+    }
+
+    /**
+     * @param {string} path
+     * @param {Handler} handler
+     */
+    PUT(path, handler) {
+        this.#registerRoute('PUT', path, handler)
+    }
+
+    /**
+     * @param {import('node:http').IncomingMessage} req
+     * @param {import('node:http').ServerResponse} res
      */
     requestListener(req, res) {
-        const route = this.#getRoute(req)
-        const params = this.#getParams(route, req.url)
+        /** @type {Handler} */
+        let handler
 
-        const request = Object.assign(req, { params })
-        route.handler.call(this, request, res)
+        let params = {}
+
+        for (const path in this.#routes) {
+            if (this.#routes.hasOwnProperty(path)) {
+                const route = this.#routes[path]
+
+                if (this.#pathMatches(route, req.url)) {
+                    if (route.handlers[req.method]) {
+                        handler = this.#routes[path].handlers[req.method]
+                        params = this.#getParamValues(route.params, req.url)
+                    } else {
+                        handler = this.methodNotAllowedHandler
+                    }
+
+                    break
+                } else {
+                    handler = this.notFoundHandler
+                }
+            }
+        }
+
+        handler.call(this, Object.assign(req, { params }), res)
     }
 }
