@@ -4,13 +4,15 @@
   "description": "",
   "scripts": {
     "build": "parcel build 'src/*.html'",
-    "start": "npm run build && node main.mjs"
+    "build:watch": "npm run build && chokidar 'src/**/*.scss' 'src/**/*.html' 'src/**/*.mjs' -c 'npm run build'",
+    "start": "node main.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@parcel/transformer-sass": "^2.10.1",
+    "chokidar-cli": "^3.0.0",
     "parcel": "^2.10.1"
   }
 }
