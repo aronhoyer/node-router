@@ -54,6 +54,11 @@ describe("Router", () => {
                 res.end()
             })
 
+            router.GET('/dist/*.css', (req, res) => {
+                res.setHeader("content-type", "text/plain")
+                res.end(req.filename)
+            })
+
             server = http.createServer(router.requestListener)
 
             server.listen(42069)
@@ -102,5 +107,11 @@ describe("Router", () => {
         const id = "abc123"
         const res = await request(`http://127.0.0.1:42069/books/${id}`)
         assert.strictEqual(res.body, id)
+    })
+
+    test('filename gets set to req object', async () => {
+        const filename = 'styles.css'
+        const res = await request(`http://127.0.0.1:42069/dist/${filename}`)
+        assert.strictEqual(res.body, filename)
     })
 })

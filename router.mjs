@@ -1,5 +1,7 @@
+import { basename, parse as parsePath } from 'path'
+
 /**
- * @typedef {import('node:http').IncomingMessage & { params: Object.<string, string|number> }} Request
+ * @typedef {import('node:http').IncomingMessage & { filename: string, params: Object.<string, string|number> }} Request
  * @typedef {import('node:http').ServerResponse<Request>} Response
  *
  * @callback Handler
@@ -85,6 +87,9 @@ export class Router {
         const pathParts = route.path.split('/').filter(Boolean)
         const urlParts = url.split('/').filter(Boolean)
 
+        const parsedPath = parsePath(route.path)
+        const parsedUrl = parsePath(url)
+
         if (pathParts.length !== urlParts.length) {
             return false
         }
@@ -97,6 +102,8 @@ export class Router {
             if (pathParts[i].startsWith(':')) {
                 const matchingParam = route.params.find((param) => param.position === i)
                 matchingParts.push(!!matchingParam)
+            } else if (pathParts[i].match(/\*\.[a-z]+$/)) {
+                matchingParts.push(parsedUrl.ext === parsedPath.ext)
             } else {
                 matchingParts.push(part === pathParts[i])
             }
@@ -165,11 +172,12 @@ export class Router {
      * @param {import('node:http').IncomingMessage} req
      * @param {import('node:http').ServerResponse} res
      */
-    requestListener(req, res) {
+    async requestListener(req, res) {
         /** @type {Handler} */
         let handler
 
         let params = {}
+        let filename = ''
 
         for (const path in this.#routes) {
             if (this.#routes.hasOwnProperty(path)) {
@@ -179,6 +187,9 @@ export class Router {
                     if (route.handlers[req.method]) {
                         handler = this.#routes[path].handlers[req.method]
                         params = this.#getParamValues(route.params, req.url)
+                        if (path.match(/\*\.[a-z]+$/)) {
+                            filename = basename(req.url)
+                        }
                     } else {
                         handler = this.methodNotAllowedHandler
                     }
@@ -190,6 +201,6 @@ export class Router {
             }
         }
 
-        handler.call(this, Object.assign(req, { params }), res)
+        handler.call(this, Object.assign(req, { filename, params }), res)
     }
 }
