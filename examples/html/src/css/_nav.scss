@@ -1,0 +1,21 @@
+@import 'container';
+
+.nav {
+    @extend .container;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 56px;
+}
+
+.nav__links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+
+    li:not(:last-of-type) {
+        margin-right: 24px;
+    }
+}

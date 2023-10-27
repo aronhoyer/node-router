@@ -1,3 +1,7 @@
+@import 'container';
+
+@import 'nav';
+
 :root {
     --bg-color: #020202;
     --text-color: #fffffc;
@@ -28,4 +32,8 @@ body {
 
 a {
     color: var(--link-color);
+}
+
+main, article {
+    @extend .container;
 }
