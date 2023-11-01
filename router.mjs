@@ -1,12 +1,15 @@
 import { basename, parse as parsePath } from 'path'
+import querystring from 'querystring'
+
+import { normalisePath } from './util.mjs'
 
 /**
- * @typedef {import('node:http').IncomingMessage & { filename: string, params: Object.<string, string|number> }} Request
+ * @typedef {import('node:http').IncomingMessage & { filename: string, params: Object.<string, string|number>, query: querystring.ParsedUrlQuery }} Request
  * @typedef {import('node:http').ServerResponse<Request>} Response
  *
  * @callback Handler
- * @param {Request}
- * @param {Response}
+ * @param {Request} req
+ * @param {Response} res
  *
  * @typedef {Object} Param
  * @prop {string} key
@@ -17,8 +20,6 @@ import { basename, parse as parsePath } from 'path'
  * @prop {Param[]} params
  * @prop {Object.<string, Handler>} handlers
  */
-
-import { normalisePath } from './util.mjs'
 
 export class Router {
     /** @type {Object.<string, Route> */
@@ -112,17 +113,13 @@ export class Router {
         return matchingParts.every(Boolean)
     }
 
-    /**
-     * @type {Handler}
-     */
+    /** @type {Handler} */
     notFoundHandler(req, res) {
         res.statusCode = 404
         res.end()
     }
 
-    /**
-     * @type {Handler}
-     */
+    /** @type {Handler} */
     methodNotAllowedHandler(req, res) {
         res.statusCode = 405
         res.end()
@@ -177,7 +174,14 @@ export class Router {
         let handler
 
         let params = {}
+        let query = {}
         let filename = ''
+
+        if (req.url.includes('?')) {
+            const [path, qs] = req.url.split('?')
+            req.url = path
+            query = querystring.parse(qs)
+        }
 
         for (const path in this.#routes) {
             if (this.#routes.hasOwnProperty(path)) {
@@ -201,6 +205,6 @@ export class Router {
             }
         }
 
-        handler.call(this, Object.assign(req, { filename, params }), res)
+        handler.call(this, Object.assign(req, { filename, params, query }), res)
     }
 }

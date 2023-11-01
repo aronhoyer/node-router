@@ -1,5 +1,6 @@
 import assert from "node:assert"
 import http from "node:http"
+import querystring from 'node:querystring'
 import { after, before, describe, test } from "node:test"
 
 import { Router } from "./router.mjs"
@@ -38,7 +39,11 @@ describe("Router", () => {
             const router = new Router()
 
             router.GET("/getroute", (req, res) => {
-                res.end()
+                let body
+                if (req.query) {
+                    body = querystring.stringify(req.query)
+                }
+                res.end(body)
             })
 
             router.POST("/books", (req, res) => {
@@ -107,6 +112,19 @@ describe("Router", () => {
         const id = "abc123"
         const res = await request(`http://127.0.0.1:42069/books/${id}`)
         assert.strictEqual(res.body, id)
+    })
+
+    test('query gets set on req', async () => {
+        const query = querystring.stringify({
+            redirect_uri: 'https://example.com',
+            prompt: 'consent',
+            response_type: 'code',
+            client_id: 'CLiOpEUVpUfw1c2n',
+            scope: 'openid',
+        })
+
+        const res = await request(`http://127.0.0.1:42069/getroute?${query}`)
+        assert.strictEqual(res.body, query)
     })
 
     test('filename gets set to req object', async () => {
